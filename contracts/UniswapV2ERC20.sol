@@ -1,10 +1,9 @@
-pragma solidity =0.5.16;
+// SPDX-License-Identifier: GPL-3.0-only
+pragma solidity >=0.8.0;
 
 import './interfaces/IUniswapV2ERC20.sol';
-import './libraries/SafeMath.sol';
 
 contract UniswapV2ERC20 is IUniswapV2ERC20 {
-    using SafeMath for uint;
 
     string public constant name = 'Uniswap V2';
     string public constant symbol = 'UNI-V2';
@@ -21,10 +20,10 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
     event Approval(address indexed owner, address indexed spender, uint value);
     event Transfer(address indexed from, address indexed to, uint value);
 
-    constructor() public {
+    constructor() {
         uint chainId;
         assembly {
-            chainId := chainid
+            chainId := chainid()
         }
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
@@ -38,14 +37,14 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
     }
 
     function _mint(address to, uint value) internal {
-        totalSupply = totalSupply.add(value);
-        balanceOf[to] = balanceOf[to].add(value);
+        totalSupply += value;
+        balanceOf[to] += value;
         emit Transfer(address(0), to, value);
     }
 
     function _burn(address from, uint value) internal {
-        balanceOf[from] = balanceOf[from].sub(value);
-        totalSupply = totalSupply.sub(value);
+        balanceOf[from] -= value;
+        totalSupply -= value;
         emit Transfer(from, address(0), value);
     }
 
@@ -55,8 +54,8 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
     }
 
     function _transfer(address from, address to, uint value) private {
-        balanceOf[from] = balanceOf[from].sub(value);
-        balanceOf[to] = balanceOf[to].add(value);
+        balanceOf[from] -= value;
+        balanceOf[to] += value;
         emit Transfer(from, to, value);
     }
 
@@ -71,8 +70,8 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
     }
 
     function transferFrom(address from, address to, uint value) external returns (bool) {
-        if (allowance[from][msg.sender] != uint(-1)) {
-            allowance[from][msg.sender] = allowance[from][msg.sender].sub(value);
+        if (allowance[from][msg.sender] != type(uint).max) {
+            allowance[from][msg.sender] -= value;
         }
         _transfer(from, to, value);
         return true;

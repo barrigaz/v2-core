@@ -1,8 +1,7 @@
-pragma solidity >=0.5.0;
+// SPDX-License-Identifier: GPL-3.0-only
+pragma solidity >=0.8.0;
 
 interface IUniswapV2Factory {
-    event PairCreated(address indexed token0, address indexed token1, uint120 feeSwap, address pair, uint);
-
     function feeTo() external view returns (address);
     function fee() external view returns (int120);
     function owner() external view returns (address);
@@ -14,7 +13,7 @@ interface IUniswapV2Factory {
     function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address pair);
 
     function setFeeTo(address _feeTo) external;
-    function setFee(uint120 _fee) external;
+    function setFee(int120 _fee) external;
     function setFeeProtocolPair(address pair, int120 feeProtocol) external;
     function setOwner(address _owner) external;
 }

@@ -102,19 +102,15 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     }
 
     // if fee is on, mint liquidity equivalent to 1/(feeProtocol+1)th of the growth in sqrt(k)
-    function _mintFee(uint112 _reserve0, uint112 _reserve1, int120 _feeProtocol) private {
-        uint _kLast = kLast; // gas savings
-
-        if (_kLast != 0) {
-            uint rootK = Math.sqrt(uint(_reserve0).mul(_reserve1));
-            uint rootKLast = Math.sqrt(_kLast);
-            if (rootK > rootKLast) {
-                uint numerator = totalSupply.mul(rootK.sub(rootKLast));
-                uint denominator = rootK.mul(uint(_feeProtocol)).add(rootKLast);
-                uint liquidity = numerator / denominator;
-                if (liquidity > 0) {
-                    _mint(IUniswapV2Factory(factory).feeTo(), liquidity);
-                }
+    function _mintFee(uint112 _reserve0, uint112 _reserve1, uint _kLast, int120 _feeProtocol) private {
+        uint rootK = Math.sqrt(uint(_reserve0).mul(_reserve1));
+        uint rootKLast = Math.sqrt(_kLast);
+        if (rootK > rootKLast) {
+            uint numerator = totalSupply.mul(rootK.sub(rootKLast));
+            uint denominator = rootK.mul(uint(_feeProtocol)).add(rootKLast);
+            uint liquidity = numerator / denominator;
+            if (liquidity > 0) {
+                _mint(IUniswapV2Factory(factory).feeTo(), liquidity);
             }
         }
     }
@@ -127,11 +123,12 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint amount0 = balance0.sub(_reserve0);
         uint amount1 = balance1.sub(_reserve1);
 
-        int120 _feeProtocol = feeProtocol; 
-        if (_feeProtocol >= 0) 
-            _mintFee(_reserve0, _reserve1, _feeProtocol);
-        else if (kLast != 0)
-            kLast = 0;
+        uint _kLast = kLast; // gas savings
+        int120 _feeProtocol = feeProtocol; // gas savings
+        if (_kLast != 0) {
+            if (_feeProtocol >= 0) _mintFee(_reserve0, _reserve1, _kLast, _feeProtocol);
+            else kLast = 0;
+        }
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         if (_totalSupply == 0) {
             liquidity = Math.sqrt(amount0.mul(amount1)).sub(MINIMUM_LIQUIDITY);
@@ -156,11 +153,12 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint balance1 = IERC20(_token1).balanceOf(address(this));
         uint liquidity = balanceOf[address(this)];
 
-        int120 _feeProtocol = feeProtocol; 
-        if (_feeProtocol >= 0) 
-            _mintFee(_reserve0, _reserve1, _feeProtocol);
-        else if (kLast != 0)
-            kLast = 0;
+        uint _kLast = kLast; // gas savings
+        int120 _feeProtocol = feeProtocol; // gas savings
+        if (_kLast != 0) {
+            if (_feeProtocol >= 0) _mintFee(_reserve0, _reserve1, _kLast, _feeProtocol);
+            else kLast = 0;
+        }
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution

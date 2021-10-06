@@ -1,17 +1,20 @@
 pragma solidity >=0.5.0;
 
 interface IUniswapV2Factory {
-    event PairCreated(address indexed token0, address indexed token1, address pair, uint);
+    event PairCreated(address indexed token0, address indexed token1, uint120 feeSwap, address pair, uint);
 
     function feeTo() external view returns (address);
-    function feeToSetter() external view returns (address);
+    function fee() external view returns (int120);
+    function owner() external view returns (address);
 
-    function getPair(address tokenA, address tokenB) external view returns (address pair);
+    function getPair(address tokenA, address tokenB, uint120 feeSwap) external view returns (address pair);
     function allPairs(uint) external view returns (address pair);
     function allPairsLength() external view returns (uint);
 
-    function createPair(address tokenA, address tokenB) external returns (address pair);
+    function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address pair);
 
-    function setFeeTo(address) external;
-    function setFeeToSetter(address) external;
+    function setFeeTo(address _feeTo) external;
+    function setFee(uint120 _fee) external;
+    function setFeeProtocolPair(address pair, int120 feeProtocol) external;
+    function setOwner(address _owner) external;
 }

@@ -5,45 +5,63 @@ import './UniswapV2Pair.sol';
 
 contract UniswapV2Factory is IUniswapV2Factory {
     address public feeTo;
-    address public feeToSetter;
+    address public owner;
 
-    mapping(address => mapping(address => address)) public getPair;
+    mapping(address => mapping(address => mapping(uint120 => address))) private pairs;
     address[] public allPairs;
+    int120 public fee;
 
-    event PairCreated(address indexed token0, address indexed token1, address pair, uint);
+    event PairCreated(address indexed token0, address indexed token1, uint120 feeSwap, address pair, uint);
 
-    constructor(address _feeToSetter) public {
-        feeToSetter = _feeToSetter;
+    modifier onlyOwner() {
+        require(msg.sender == owner, 'UniswapV2: FORBIDDEN');
+        _;
+    }
+
+    constructor(address _owner, int120 _fee) public {
+        owner = _owner;
+        fee = _fee;
     }
 
     function allPairsLength() external view returns (uint) {
         return allPairs.length;
     }
 
-    function createPair(address tokenA, address tokenB) external returns (address pair) {
+    function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address pair) {
         require(tokenA != tokenB, 'UniswapV2: IDENTICAL_ADDRESSES');
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), 'UniswapV2: ZERO_ADDRESS');
-        require(getPair[token0][token1] == address(0), 'UniswapV2: PAIR_EXISTS'); // single check is sufficient
+        (tokenA, tokenB) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        require(tokenA != address(0), 'UniswapV2: ZERO_ADDRESS');
+        require(pairs[tokenA][tokenB][feeSwap] == address(0), 'UniswapV2: PAIR_EXISTS'); // single check is sufficient
         bytes memory bytecode = type(UniswapV2Pair).creationCode;
-        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        bytes32 salt = keccak256(abi.encodePacked(tokenA, tokenB, feeSwap));
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
-        IUniswapV2Pair(pair).initialize(token0, token1);
-        getPair[token0][token1] = pair;
-        getPair[token1][token0] = pair; // populate mapping in the reverse direction
+        IUniswapV2Pair(pair).initialize(tokenA, tokenB, feeSwap, fee);
+        pairs[tokenA][tokenB][feeSwap] = pair;
         allPairs.push(pair);
-        emit PairCreated(token0, token1, pair, allPairs.length);
+        emit PairCreated(tokenA, tokenB, feeSwap, pair, allPairs.length);
     }
 
-    function setFeeTo(address _feeTo) external {
-        require(msg.sender == feeToSetter, 'UniswapV2: FORBIDDEN');
+    function setFeeTo(address _feeTo) external onlyOwner {
         feeTo = _feeTo;
     }
 
-    function setFeeToSetter(address _feeToSetter) external {
-        require(msg.sender == feeToSetter, 'UniswapV2: FORBIDDEN');
-        feeToSetter = _feeToSetter;
+    function setFee(int120 _fee) external onlyOwner {
+        fee = _fee;
     }
+
+    function setFeeProtocolPair(address pair, int120 feeProtocol) external onlyOwner {
+        IUniswapV2Pair(pair).setFeeProtocol(feeProtocol);
+    }
+
+    function setOwner(address _owner) external onlyOwner {
+        owner = _owner;
+    }
+
+    function getPair(address tokenA, address tokenB, uint120 feeSwap) external view returns(address) {
+        (tokenA, tokenB) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        return pairs[tokenA][tokenB][feeSwap];
+    }
+
 }

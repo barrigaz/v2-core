@@ -32,6 +32,7 @@ interface IUniswapV2Pair {
         address indexed to
     );
     event Sync(uint112 reserve0, uint112 reserve1);
+    event SetFeeProtocol(int120 feeProtocol);
 
     function MINIMUM_LIQUIDITY() external pure returns (uint);
     function factory() external view returns (address);
@@ -41,6 +42,8 @@ interface IUniswapV2Pair {
     function price0CumulativeLast() external view returns (uint);
     function price1CumulativeLast() external view returns (uint);
     function kLast() external view returns (uint);
+    function feeSwap() external view returns (uint120);
+    function feeProtocol() external view returns (int120);
 
     function mint(address to) external returns (uint liquidity);
     function burn(address to) external returns (uint amount0, uint amount1);
@@ -48,5 +51,6 @@ interface IUniswapV2Pair {
     function skim(address to) external;
     function sync() external;
 
-    function initialize(address, address) external;
+    function initialize(address _token0, address _token1, uint120 _feeSwap, int120 _feeProtocol) external;
+    function setFeeProtocol(int120 _feeProtocol) external;
 }

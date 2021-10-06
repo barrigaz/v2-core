@@ -1,4 +1,5 @@
 pragma solidity >=0.5.0;
+pragma experimental ABIEncoderV2;
 
 interface IUniswapV2Pair {
     event Approval(address indexed owner, address indexed spender, uint value);
@@ -34,11 +35,17 @@ interface IUniswapV2Pair {
     event Sync(uint112 reserve0, uint112 reserve1);
     event SetFeeProtocol(int120 feeProtocol);
 
+    struct ReservesSlot {
+        uint112 reserve0;           
+        uint112 reserve1;
+        uint32 blockTimestampLast;
+    }
+
     function MINIMUM_LIQUIDITY() external pure returns (uint);
     function factory() external view returns (address);
     function token0() external view returns (address);
     function token1() external view returns (address);
-    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function getReserves() external view returns (ReservesSlot memory _reservesSlot);
     function price0CumulativeLast() external view returns (uint);
     function price1CumulativeLast() external view returns (uint);
     function kLast() external view returns (uint);

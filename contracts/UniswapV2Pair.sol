@@ -1,4 +1,5 @@
 pragma solidity =0.5.16;
+pragma experimental ABIEncoderV2;
 
 import './interfaces/IUniswapV2Pair.sol';
 import './UniswapV2ERC20.sol';
@@ -20,9 +21,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     address public token0;
     address public token1;
 
-    uint112 private reserve0;           // uses single storage slot, accessible via getReserves
-    uint112 private reserve1;           // uses single storage slot, accessible via getReserves
-    uint32  private blockTimestampLast; // uses single storage slot, accessible via getReserves
+    ReservesSlot private reservesSlot; // uses single storage slot, accessible via getReserves
 
     uint public price0CumulativeLast;
     uint public price1CumulativeLast;
@@ -43,10 +42,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         unlocked = 1;
     }
 
-    function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) {
-        _reserve0 = reserve0;
-        _reserve1 = reserve1;
-        _blockTimestampLast = blockTimestampLast;
+    function getReserves() external view returns (ReservesSlot memory _reservesSlot) {
+        return reservesSlot;
     }
 
     function _safeTransfer(address token, address to, uint value) private {
@@ -86,19 +83,19 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     }
 
     // update reserves and, on the first call per block, price accumulators
-    function _update(uint balance0, uint balance1, uint112 _reserve0, uint112 _reserve1) private {
+    function _update(uint balance0, uint balance1, ReservesSlot memory _reservesSlot) private {
         require(balance0 <= uint112(-1) && balance1 <= uint112(-1), 'UniswapV2: OVERFLOW');
         uint32 blockTimestamp = uint32(block.timestamp % 2**32);
-        uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
-        if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
+        uint32 timeElapsed = blockTimestamp - _reservesSlot.blockTimestampLast; // overflow is desired
+        if (timeElapsed > 0 && _reservesSlot.reserve0 != 0 && _reservesSlot.reserve1 != 0) {
             // * never overflows, and + overflow is desired
-            price0CumulativeLast += uint(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) * timeElapsed;
-            price1CumulativeLast += uint(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) * timeElapsed;
+            price0CumulativeLast += uint(UQ112x112.encode(_reservesSlot.reserve1).uqdiv(_reservesSlot.reserve0)) * timeElapsed;
+            price1CumulativeLast += uint(UQ112x112.encode(_reservesSlot.reserve0).uqdiv(_reservesSlot.reserve1)) * timeElapsed;
         }
-        reserve0 = uint112(balance0);
-        reserve1 = uint112(balance1);
-        blockTimestampLast = blockTimestamp;
-        emit Sync(reserve0, reserve1);
+        reservesSlot.reserve0 = _reservesSlot.reserve0 = uint112(balance0);
+        reservesSlot.reserve1 = _reservesSlot.reserve1 = uint112(balance1);
+        reservesSlot.blockTimestampLast = blockTimestamp;
+        emit Sync(_reservesSlot.reserve0, _reservesSlot.reserve1);
     }
 
     // if fee is on, mint liquidity equivalent to 1/(feeProtocol+1)th of the growth in sqrt(k)
@@ -117,16 +114,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
 
     // this low-level function should be called from a contract which performs important safety checks
     function mint(address to) external lock returns (uint liquidity) {
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
+        ReservesSlot memory _reservesSlot = reservesSlot; // gas savings
         uint balance0 = IERC20(token0).balanceOf(address(this));
         uint balance1 = IERC20(token1).balanceOf(address(this));
-        uint amount0 = balance0.sub(_reserve0);
-        uint amount1 = balance1.sub(_reserve1);
+        uint amount0 = balance0.sub(_reservesSlot.reserve0);
+        uint amount1 = balance1.sub(_reservesSlot.reserve1);
 
         uint _kLast = kLast; // gas savings
         int120 _feeProtocol = feeProtocol; // gas savings
         if (_kLast != 0) {
-            if (_feeProtocol >= 0) _mintFee(_reserve0, _reserve1, _kLast, _feeProtocol);
+            if (_feeProtocol >= 0) _mintFee(_reservesSlot.reserve0, _reservesSlot.reserve1, _kLast, _feeProtocol);
             else kLast = 0;
         }
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
@@ -134,19 +131,20 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
             liquidity = Math.sqrt(amount0.mul(amount1)).sub(MINIMUM_LIQUIDITY);
            _mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
         } else {
-            liquidity = Math.min(amount0.mul(_totalSupply) / _reserve0, amount1.mul(_totalSupply) / _reserve1);
+            liquidity = Math.min(amount0.mul(_totalSupply) / _reservesSlot.reserve0, amount1.mul(_totalSupply) / _reservesSlot.reserve1);
         }
         require(liquidity > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED');
         _mint(to, liquidity);
 
-        _update(balance0, balance1, _reserve0, _reserve1);
-        if (_feeProtocol >= 0) kLast = uint(reserve0).mul(reserve1); // reserve0 and reserve1 are up-to-date
+        _update(balance0, balance1, _reservesSlot);
+        // Test to make sure _reservesSlot is passed by reference and modified by _update()
+        if (_feeProtocol >= 0) kLast = uint(_reservesSlot.reserve0).mul(_reservesSlot.reserve1); // reserve0 and reserve1 are up-to-date
         emit Mint(msg.sender, amount0, amount1);
     }
 
     // this low-level function should be called from a contract which performs important safety checks
     function burn(address to) external lock returns (uint amount0, uint amount1) {
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
+        ReservesSlot memory _reservesSlot = reservesSlot; // gas savings
         address _token0 = token0;                                // gas savings
         address _token1 = token1;                                // gas savings
         uint balance0 = IERC20(_token0).balanceOf(address(this));
@@ -156,7 +154,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint _kLast = kLast; // gas savings
         int120 _feeProtocol = feeProtocol; // gas savings
         if (_kLast != 0) {
-            if (_feeProtocol >= 0) _mintFee(_reserve0, _reserve1, _kLast, _feeProtocol);
+            if (_feeProtocol >= 0) _mintFee(_reservesSlot.reserve0, _reservesSlot.reserve1, _kLast, _feeProtocol);
             else kLast = 0;
         }
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
@@ -169,16 +167,17 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         balance0 = IERC20(_token0).balanceOf(address(this));
         balance1 = IERC20(_token1).balanceOf(address(this));
 
-        _update(balance0, balance1, _reserve0, _reserve1);
-        if (_feeProtocol >= 0) kLast = uint(reserve0).mul(reserve1); // reserve0 and reserve1 are up-to-date
+        _update(balance0, balance1, _reservesSlot);
+        // Test to make sure _reservesSlot is passed by reference and modified by _update()
+        if (_feeProtocol >= 0) kLast = uint(_reservesSlot.reserve0).mul(_reservesSlot.reserve1); // reserve0 and reserve1 are up-to-date
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
     // this low-level function should be called from a contract which performs important safety checks
     function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external lock {
         require(amount0Out > 0 || amount1Out > 0, 'UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT');
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
-        require(amount0Out < _reserve0 && amount1Out < _reserve1, 'UniswapV2: INSUFFICIENT_LIQUIDITY');
+        ReservesSlot memory _reservesSlot = reservesSlot; // gas savings
+        require(amount0Out < _reservesSlot.reserve0 && amount1Out < _reservesSlot.reserve1, 'UniswapV2: INSUFFICIENT_LIQUIDITY');
 
         uint balance0;
         uint balance1;
@@ -192,17 +191,16 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         balance0 = IERC20(_token0).balanceOf(address(this));
         balance1 = IERC20(_token1).balanceOf(address(this));
         }
-        uint amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
-        uint amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
+        uint amount0In = balance0 > _reservesSlot.reserve0 - amount0Out ? balance0 - (_reservesSlot.reserve0 - amount0Out) : 0;
+        uint amount1In = balance1 > _reservesSlot.reserve1 - amount1Out ? balance1 - (_reservesSlot.reserve1 - amount1Out) : 0;
         require(amount0In > 0 || amount1In > 0, 'UniswapV2: INSUFFICIENT_INPUT_AMOUNT');
         { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
         uint _feeSwap = feeSwap; // gas savings
         uint balance0Adjusted = balance0.mul(FEE_SWAP_PRECISION).sub(amount0In.mul(_feeSwap));
         uint balance1Adjusted = balance1.mul(FEE_SWAP_PRECISION).sub(amount1In.mul(_feeSwap));
-        require(balance0Adjusted.mul(balance1Adjusted) >= uint(_reserve0).mul(_reserve1).mul(FEE_SWAP_PRECISION**2), 'UniswapV2: K');
+        require(balance0Adjusted.mul(balance1Adjusted) >= uint(_reservesSlot.reserve0).mul(_reservesSlot.reserve1).mul(FEE_SWAP_PRECISION**2), 'UniswapV2: K');
         }
-
-        _update(balance0, balance1, _reserve0, _reserve1);
+        _update(balance0, balance1, _reservesSlot);
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
@@ -210,13 +208,14 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     function skim(address to) external lock {
         address _token0 = token0; // gas savings
         address _token1 = token1; // gas savings
-        _safeTransfer(_token0, to, IERC20(_token0).balanceOf(address(this)).sub(reserve0));
-        _safeTransfer(_token1, to, IERC20(_token1).balanceOf(address(this)).sub(reserve1));
+        ReservesSlot memory _reservesSlot = reservesSlot; // gas savings
+        _safeTransfer(_token0, to, IERC20(_token0).balanceOf(address(this)).sub(_reservesSlot.reserve0));
+        _safeTransfer(_token1, to, IERC20(_token1).balanceOf(address(this)).sub(_reservesSlot.reserve1));
     }
 
     // force reserves to match balances
     function sync() external lock {
-        _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)), reserve0, reserve1);
+        _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)), reservesSlot);
     }
 
     function setFeeProtocol(int120 _feeProtocol) external onlyFactory {

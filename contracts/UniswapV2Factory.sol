@@ -8,19 +8,20 @@ contract UniswapV2Factory is IUniswapV2Factory {
     address public feeTo;
     address public owner;
 
-    mapping(address => mapping(address => mapping(uint120 => address))) private pairs;
+    mapping(address => mapping(address => mapping(uint => address))) private pairs;
     address[] public allPairs;
-    int120 public fee;
+    int8 public fee;
 
-    event PairCreated(address indexed token0, address indexed token1, uint120 feeSwap, address pair, uint);
+    event PairCreated(address indexed token0, address indexed token1, uint feeSwap, address pair, uint);
 
     modifier onlyOwner() {
         require(msg.sender == owner, 'UniswapV2: FORBIDDEN');
         _;
     }
 
-    constructor(address _owner, int120 _fee) {
+    constructor(address _owner, address _feeTo, int8 _fee) {
         owner = _owner;
+        feeTo = _feeTo;
         fee = _fee;
     }
 
@@ -29,8 +30,8 @@ contract UniswapV2Factory is IUniswapV2Factory {
     }
 
     // Now solc supports CREATE2 test if this is more gas efficient
-    // function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address pair) {
-    function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address) {
+    // function createPair(address tokenA, address tokenB, uint feeSwap) external returns (address pair) {
+    function createPair(address tokenA, address tokenB, uint feeSwap) external returns (address) {
         require(tokenA != tokenB, 'UniswapV2: IDENTICAL_ADDRESSES');
         (tokenA, tokenB) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(tokenA != address(0), 'UniswapV2: ZERO_ADDRESS');
@@ -45,8 +46,8 @@ contract UniswapV2Factory is IUniswapV2Factory {
         // allPairs.push(pair);
         // emit PairCreated(tokenA, tokenB, feeSwap, pair, allPairs.length);
         // Now solc supports CREATE2 test if this is more gas efficient
-        UniswapV2Pair pair = new UniswapV2Pair{salt: keccak256(abi.encodePacked(tokenA, tokenB, feeSwap))}();
-        pair.initialize(tokenA, tokenB, feeSwap, fee);
+        UniswapV2Pair pair = new UniswapV2Pair{salt: keccak256(abi.encodePacked(tokenA, tokenB, feeSwap))}(tokenA, tokenB, feeSwap);
+        pair.initialize(fee);
         pairs[tokenA][tokenB][feeSwap] = address(pair);
         allPairs.push(address(pair));
         emit PairCreated(tokenA, tokenB, feeSwap, address(pair), allPairs.length);
@@ -57,11 +58,11 @@ contract UniswapV2Factory is IUniswapV2Factory {
         feeTo = _feeTo;
     }
 
-    function setFee(int120 _fee) external onlyOwner {
+    function setFee(int8 _fee) external onlyOwner {
         fee = _fee;
     }
 
-    function setFeeProtocolPair(address pair, int120 feeProtocol) external onlyOwner {
+    function setFeeProtocolPair(address pair, int8 feeProtocol) external onlyOwner {
         IUniswapV2Pair(pair).setFeeProtocol(feeProtocol);
     }
 
@@ -69,7 +70,7 @@ contract UniswapV2Factory is IUniswapV2Factory {
         owner = _owner;
     }
 
-    function getPair(address tokenA, address tokenB, uint120 feeSwap) external view returns(address) {
+    function getPair(address tokenA, address tokenB, uint feeSwap) external view returns(address) {
         (tokenA, tokenB) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         return pairs[tokenA][tokenB][feeSwap];
     }

@@ -28,20 +28,29 @@ contract UniswapV2Factory is IUniswapV2Factory {
         return allPairs.length;
     }
 
-    function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address pair) {
+    // Now solc supports CREATE2 test if this is more gas efficient
+    // function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address pair) {
+    function createPair(address tokenA, address tokenB, uint120 feeSwap) external returns (address) {
         require(tokenA != tokenB, 'UniswapV2: IDENTICAL_ADDRESSES');
         (tokenA, tokenB) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(tokenA != address(0), 'UniswapV2: ZERO_ADDRESS');
         require(pairs[tokenA][tokenB][feeSwap] == address(0), 'UniswapV2: PAIR_EXISTS'); // single check is sufficient
-        bytes memory bytecode = type(UniswapV2Pair).creationCode;
-        bytes32 salt = keccak256(abi.encodePacked(tokenA, tokenB, feeSwap));
-        assembly {
-            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
-        }
-        IUniswapV2Pair(pair).initialize(tokenA, tokenB, feeSwap, fee);
-        pairs[tokenA][tokenB][feeSwap] = pair;
-        allPairs.push(pair);
-        emit PairCreated(tokenA, tokenB, feeSwap, pair, allPairs.length);
+        // bytes memory bytecode = type(UniswapV2Pair).creationCode;
+        // bytes32 salt = keccak256(abi.encodePacked(tokenA, tokenB, feeSwap));
+        // assembly {
+        //     pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+        // }
+        // IUniswapV2Pair(pair).initialize(tokenA, tokenB, feeSwap, fee);
+        // pairs[tokenA][tokenB][feeSwap] = pair;
+        // allPairs.push(pair);
+        // emit PairCreated(tokenA, tokenB, feeSwap, pair, allPairs.length);
+        // Now solc supports CREATE2 test if this is more gas efficient
+        UniswapV2Pair pair = new UniswapV2Pair{salt: keccak256(abi.encodePacked(tokenA, tokenB, feeSwap))}();
+        pair.initialize(tokenA, tokenB, feeSwap, fee);
+        pairs[tokenA][tokenB][feeSwap] = address(pair);
+        allPairs.push(address(pair));
+        emit PairCreated(tokenA, tokenB, feeSwap, address(pair), allPairs.length);
+        return address(pair);
     }
 
     function setFeeTo(address _feeTo) external onlyOwner {
